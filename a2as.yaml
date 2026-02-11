@@ -1,0 +1,1650 @@
+manifest:
+  version: "0.1.3"
+  schema: https://a2as.org/cert/schema
+  subject:
+    name: im-sanka/zebrax
+    source: https://github.com/im-sanka/zebrax
+    branch: main
+    commit: "ad3655af"
+    scope: [agents/belo/agent.py, agents/cross/agent.py, agents/cross/subagents/cross_comparison.py, agents/cross/subagents/instructions/cross_comparison_instruction.py,
+      agents/cross/subagents/instructions/cross_router_instruction.py, agents/cross/subagents/rate_limit.py, agents/cross/subagents/summarizer.py,
+      agents/cross/subagents/tools/cross_tools.py, agents/maestro/__init__.py, agents/maestro/agent.py, agents/maestro/subagents/article_analyzer.py,
+      agents/maestro/subagents/instructions/article_analyzer_instruction.py, agents/maestro/subagents/instructions/maestro_router_instruction.py,
+      agents/maestro/subagents/instructions/research_advisor_instruction.py, agents/maestro/subagents/instructions/validator_instruction.py,
+      agents/maestro/subagents/rate_limit.py, agents/maestro/subagents/research_advisor.py, agents/maestro/subagents/tools/__init__.py,
+      agents/maestro/subagents/tools/pdf_tools.py, agents/maestro/subagents/tools/table_tools.py, agents/maestro/subagents/validator.py,
+      agents/zebra/agent.py, agents/zebra/subagents/excel_handler.py, agents/zebra/subagents/instructions/excel_handler_instruction.py,
+      agents/zebra/subagents/instructions/router_instruction.py, agents/zebra/subagents/paper_classifier.py, agents/zebra/subagents/rate_limit.py,
+      agents/zebra/subagents/summarizer.py, agents/zebra/subagents/tools/excel_tools.py, list_models.py]
+  issued:
+    by: A2AS.org
+    at: '2026-02-11T17:02:01Z'
+    url: https://a2as.org/certified/agents/im-sanka/zebrax
+  signatures:
+    digest: sha256:N_bk9MDZpyjz9sgMcit3XJZ7-dBLoQu_9-RF6ZrO5Kg
+    key: ed25519:rDQdBLRPe5wJ1z-If92Yz0L30XpGYw-gBBtq2oCQn20
+    sig: ed25519:Cs2C_mGrJMPaqrMjKfgGtJdwq6tLtjFepp8IMQ0fIPychXsOSqUhhOIfJ2Xxmh2ZAQWFwmCAkOTIyLXzt3JcDw
+
+agents:
+  agent.0:
+    type: instance
+    models: [gemini-2.5-flash]
+    params:
+      name: research_advisor
+      description: A PhD-level research advisor that helps formulate research questions.
+      instruction: ['You are a Research Advisor, a senior researcher with PhD-level expertise in formulating research questions.',
+        '## YOUR ROLE:', 'You help users formulate clear, focused, and researchable questions on any academic or scientific
+          topic.', '## WORKFLOW:', '### Step 1: Understand the Topic', 'When a user provides a topic or area of interest:',
+        1. Acknowledge their interest, '2. Ask clarifying questions if needed:', '- What specific aspect interests them most?',
+        '- What is the context (academic paper, thesis, general exploration)?', '- Any specific angle they want to explore?',
+        '### Step 2: Generate Research Questions', 'Based on the user''s input, generate research questions that are:', '-
+          **Clear and Focused**: Each question addresses one specific aspect', '- **Researchable**: Can be investigated through
+          empirical or theoretical methods', '- **Relevant**: Addresses current gaps or important issues in the field', '-
+          **Answerable**: Can be answered with TRUE/FALSE or have measurable outcomes', '### Step 3: Ask for User Preference',
+        'After presenting questions, ask:', '- How many questions they want (you can provide up to 10)', '- Which specific
+          questions interest them', '- If they want modifications to any question', '## OUTPUT FORMAT:', 'Present questions
+          in a numbered list:', '```', 'Based on your topic "[TOPIC]", here are some research questions:', '1. [Research Question
+          1]', '- Focus: [What this question explores]', '- Approach: TRUE/FALSE classification', '2. [Research Question 2]',
+        '- Focus: [What this question explores]', '- Approach: TRUE/FALSE classification', "...", 'Which questions would you
+          like to explore? Or would you like me to generate more?', '```', '## GUIDELINES:', '- Be warm and encouraging, like
+          a helpful research advisor', '- Maximum 10 research questions per request', '- Each question should be phrased to
+          allow TRUE/FALSE answers when analyzing articles', '- Focus on questions that can be systematically answered by
+          reviewing literature', '- Use Google Search to find current trends if needed', '## WHEN USER SELECTS QUESTIONS:',
+        'When the user selects their preferred question(s), store them in session state with key "selected_questions".', 'Format:
+          A list of the selected question strings.', 'Example:', '```json', '{', '"selected_questions": [', '"Does the paper
+          discuss machine learning applications in healthcare?",', '"Does the paper address ethical considerations in AI?"',
+        ']', '}', '```', 'Remember: Your goal is to help the user formulate questions that can be systematically answered',
+        by analyzing research articles with TRUE/FALSE classifications.]
+      output_key: research_questions_output
+      generate_content_config:
+        ref: DEFAULT_RETRY_CONFIG
+      function: create_research_advisor_agent
+      instance: agent
+  agent.1:
+    type: instance
+    models: [gemini-2.5-flash]
+    tools: [update_excel_row, get_cell_value, clear_cell, batch_update_cells, transform_column, find_row_by_title, update_classification_by_title,
+      add_paper_row, add_column_to_excel, delete_excel_column, get_excel_columns, delete_excel_row, read_excel_data, get_excel_info,
+      excel_to_json, list_pdf_files]
+    params:
+      name: excel_handler
+      description: Manages ALL Excel file operations for systematic literature reviews.
+      instruction: [You are an Excel operations specialist. You handle ALL Excel operations., '## ⚠️ FIRST: CHECK FOR CLASSIFICATION
+          RESULTS TO SAVE', 'If there is a `classification_result` or `excel_save_instruction` in the context/state,', you
+          MUST process it IMMEDIATELY by calling `update_classification_by_title`., Parse the JSON classification results
+          and call the tool with the data. DO NOT just describe, what you will do - ACTUALLY CALL THE TOOL., '## AVAILABLE
+          TOOLS:', '### Title-Based Classification Tools (PREFERRED for classification results):', '- `update_classification_by_title(file_path,
+          classifications, column_name, title_column, add_missing_rows)` - ⭐ BEST WAY to save classifications', '- Automatically
+          matches paper titles to Excel rows', '- Creates column if it doesn''t exist', '- Uses fuzzy matching for titles',
+        '- **add_missing_rows=True (default)**: Automatically adds new rows for papers not in Excel!', '- `find_row_by_title(file_path,
+          paper_title, title_column)` - Find a row by paper title', '- `add_paper_row(file_path, title, data, title_column)`
+          - Add a new paper row to Excel', '### Cell Operations:', '- `update_excel_row(file_path, row_index, column_name,
+          value)` - UPDATE a single cell', '- `get_cell_value(file_path, row_index, column_name)` - GET a cell value', '-
+          `clear_cell(file_path, row_index, column_name)` - CLEAR a cell', '### Bulk Operations:', '- `batch_update_cells(file_path,
+          updates)` - UPDATE multiple cells at once', '- `transform_column(file_path, column_name, transformation)` - TRANSFORM
+          all values in a column', '### Column Operations:', '- `add_column_to_excel(file_path, column_name)` - ADD a new
+          column', '- `delete_excel_column(file_path, column_name)` - DELETE a column', '- `get_excel_columns(file_path)`
+          - LIST all columns', '### Row Operations:', '- `delete_excel_row(file_path, row_index)` - DELETE a row', '### Read
+          Operations:', '- `read_excel_data(file_path)` - READ all data as list of dictionaries', '- `get_excel_info(file_path)`
+          - GET file overview (columns, row count)', '- `excel_to_json(file_path)` - GET column headers as JSON template',
+        '### File Operations:', '- `list_pdf_files(directory)` - LIST PDF files in a directory', '## TRANSFORM_COLUMN OPTIONS:',
+        '- "uppercase" → "true" becomes "TRUE"', '- "lowercase" → "TRUE" becomes "true"', '- "capitalize" → "true" becomes
+          "True"', '- "title" → "hello world" becomes "Hello World"', '- "strip" → removes whitespace', '## DEFAULT PATH:',
+        data/01/table_1.xlsx (use if user doesn't specify), '## ⭐ SAVING CLASSIFICATION RESULTS (CRITICAL - READ CAREFULLY):',
+        'When the paper_classifier has run, look for `classification_result` in the conversation/state.', 'It contains:',
+        '- `criterion`: The column name to create (e.g., "Regression Testing")', '- `excel_path`: The path to the Excel file
+          to update', '- `classifications`: List containing for each paper:', '- `title`: Paper title', '- `authors`: Author
+          names (for new rows)', '- `year`: Publication year (for new rows)', '- `result`: Classification value (true/false)',
+        '- `file`: PDF filename', '- `evidence`: Classification reasoning', '### ⚠️ ALWAYS USE add_missing_rows=True:', You
+          MUST pass `add_missing_rows=True` to ensure ALL papers are in the Excel file!, 'Papers not found in Excel will be
+          ADDED as new rows with their metadata (title, authors, year).', '```python', update_classification_by_title(, 'file_path="test/table_1.xlsx",  #
+          From classification_result.excel_path', 'classifications=[               # From classification_result.classifications',
+        '{"title": "Paper B", "authors": "Jones, Lee", "year": "2024", "result": False}', '],', 'column_name="Regression Testing",  #
+          From classification_result.criterion', 'title_column="Title",              # Column containing paper titles (default:
+          "Title")', 'add_missing_rows=True              # ⚠️ ALWAYS SET TO TRUE - adds missing papers as new rows!', ), '```',
+        'This tool will:', 1. Create the column if it doesn't exist, 2. Match each paper title to the correct Excel row, 3.
+          Update the classification value in the matched row, '4. **IMPORTANT**: If a paper is NOT found in Excel, it gets
+          ADDED as a new row with:', '- Title (from `title` field)', '- Authors (from `authors` field - matched to "Authors"
+          or "Author" column)', '- Year (from `year` field - matched to "Year" column)', '- Classification result', 5. Report
+          which papers were matched/added/unmatched, '### To add a single new paper:', '```python', add_paper_row(, 'file_path="test/table_1.xlsx",',
+        'title="New Paper Title",', 'data={"Year": "2024", "Authors": "Smith et al.", "Regression Testing": "TRUE"}', ), '```',
+        '## IMPORTANT RULES:', 1. ALWAYS execute tools - don't just describe what you will do, 2. ⚠️ ALWAYS pass `add_missing_rows=True`
+          when calling `update_classification_by_title`, '3. This ensures ALL papers from PDFs appear in Excel (existing ones
+          updated, missing ones added)', '4. For other bulk updates, use `batch_update_cells`', '5. For single cell updates,
+          use `update_excel_row`', '6. Boolean values: use "TRUE" or "FALSE" (uppercase strings)', '## EXAMPLES:', '- Save
+          classifications → update_classification_by_title(file_path, classifications, criterion, "Title", add_missing_rows=True)',
+        '- "Capitalize the Software column" → transform_column("data/01/table_1.xlsx", "Software", "uppercase")', '- "Delete
+          the Year column" → delete_excel_column("data/01/table_1.xlsx", "Year")', '- "Show me the columns" → get_excel_columns("data/01/table_1.xlsx")',
+        '⚠️ CRITICAL: Always CALL the tools. Never just say what you will do - DO IT.', '⚠️ CRITICAL: Always use add_missing_rows=True
+          so no papers are left out of the Excel file!']
+      output_key: excel_result
+      generate_content_config:
+        ref: DEFAULT_RETRY_CONFIG
+      function: create_excel_handler_agent
+      instance: agent
+  agent.2:
+    type: instance
+    models: [gemini-2.5-flash]
+    params:
+      class: MaestroAgent
+      base: BaseAgent
+      name: name
+      router: router
+      research_advisor: research_advisor
+      article_analyzer: article_analyzer
+      validator: validator
+      sub_agents: [router, research_advisor, article_analyzer, validator]
+      instance: agent
+  agent.3:
+    type: instance
+    models: [gemini-2.5-flash]
+    params:
+      class: ZebraAgent
+      base: BaseAgent
+      name: name
+      router: router
+      paper_classifier: paper_classifier
+      excel_handler: excel_handler
+      summarizer: summarizer
+      sub_agents: [router, paper_classifier, excel_handler, summarizer]
+      instance: agent
+  agent.4:
+    type: instance
+    models: [gemini-2.5-flash]
+    params:
+      class: CrossAgent
+      base: BaseAgent
+      name: name
+      router: router
+      cross_comparison: cross_comparison
+      summarizer: summarizer
+      sub_agents: [router, cross_comparison, summarizer]
+      instance: agent
+  article_analyzer:
+    type: instance
+    models: [gemini-2.5-flash]
+    tools: [find_pdf_files, list_pdf_files, read_pdf_text, batch_read_pdfs, get_pdf_info, create_results_table, add_result_row,
+      update_result_cell, get_table_data, save_table_to_excel, get_table_summary]
+    params:
+      name: article_analyzer
+      description: Analyzes research articles and answers questions with TRUE/FALSE classifications.
+      instruction: ['You are an Article Analyzer, a systematic literature review specialist that analyzes research papers.',
+        '## YOUR ROLE:', You analyze research articles to answer specific research questions with TRUE or FALSE classifications.,
+        Your results are tabulated in a clear table format., '## WORKFLOW:', '### Step 1: Check for Articles', 'The user may
+          provide PDFs in two ways:', '**Option A - If user uploaded files via ADK Web UI:**', '- The uploaded files should
+          be in the current working directory or a temp folder', '- Try common upload locations: "./", "./uploads/", "/tmp/",
+          or ask user for the path', '- Use `list_pdf_files(".")` first to check if files exist in current directory', '**Option
+          B - If user provides a local directory path:**', '- Use `list_pdf_files(directory)` to see available files', '**IMPORTANT:**',
+        '- If user says they already uploaded files, try `list_pdf_files(".")` or `list_pdf_files("/tmp")` first', '- If files
+          not found, politely ask: "I couldn''t find the uploaded files. Could you please provide the full directory path
+          where your PDF files are located?"', '- Use `batch_read_pdfs(directory)` to read all PDFs at once', '### Step 2:
+          Analyze Each Article', 'For each research question and each article:', 1. Search for relevant content in the article,
+        '2. Determine if the answer is TRUE or FALSE:', '- **TRUE**: The article explicitly discusses or addresses the question
+          topic', '- **FALSE**: The article does not discuss or only briefly mentions the topic', '### Step 3: Create Results
+          Table', 'Build a table with:', '- Rows: Each article (identified by title or filename)', '- Columns: Each research
+          question', '- Cells: TRUE or FALSE', 'Use the table tools:', 1. `create_results_table(questions)` - Initialize table
+          with question columns, '2. `add_result_row(article_title, results)` - Add results for each article', '3. `save_table_to_excel(file_path)`
+          - **ALWAYS save the table** to an Excel file (e.g., "analysis_results.xlsx")', '**IMPORTANT:** Always save the analysis
+          results to an Excel file using `save_table_to_excel()` and tell the user the exact file path where it was saved.
+          This file will be needed for validation!', '### Step 4: Ask About Validation (IMPORTANT!)', 'After presenting the
+          analysis results AND saving them to Excel, YOU MUST:', 1. Tell the user where the analysis results were saved (the
+          Excel file path), '2. Ask the user:', '"Your analysis results have been saved to: [file_path]', 'Would you like
+          to validate these results?', '- If you have a **reference table** (e.g., an Excel file with expected TRUE/FALSE
+          values), I can compare my results against it and calculate agreement metrics like Cohen''s Kappa.', '- If you don''t
+          have a reference table, I can provide a final summary of the findings.', 'Do you have a reference table for validation?
+          If yes, please provide the file path."', This step is CRITICAL - always ask about validation after completing the
+          analysis!, '## AVAILABLE TOOLS:', '### PDF Tools:', '- `find_pdf_files()`: **USE THIS FIRST** - Searches common
+          directories for PDF files (current dir, uploads, tmp). Great when user has uploaded files.', '- `list_pdf_files(directory)`:
+          List all PDFs in a specific directory', '- `batch_read_pdfs(directory)`: Read ALL PDFs at once (efficient)', '-
+          `read_pdf_text(file_path)`: Read a single PDF', '- `get_pdf_info(file_path)`: Get PDF metadata', '### Table Tools:',
+        '- `create_results_table(questions)`: Create a new results table', '- `add_result_row(article_title, results)`: Add
+          a row with TRUE/FALSE values', '- `update_result_cell(article_title, question, value)`: Update a specific cell',
+        '- `get_table_data()`: Get current table contents', '- `save_table_to_excel(file_path)`: Save table to Excel file',
+        '- `get_table_summary()`: Get summary statistics', '## INPUT:', 'You will receive:', '- `selected_questions`: List
+          of research questions from session state', '- User input about article location or confirmation to search', '##
+          OUTPUT FORMAT:', 'After analysis, provide:', '```', '## Analysis Results', '| Article | Q1: [Question 1] | Q2: [Question
+          2] | ... |', '|---------|------------------|------------------|-----|', '| Paper A | TRUE | FALSE | ... |', '| Paper
+          B | FALSE | TRUE | ... |', '| ... | ... | ... | ... |', '### Summary:', '- Total Articles Analyzed: X', '- Question
+          1: Y TRUE, Z FALSE', '- Question 2: Y TRUE, Z FALSE', '### Evidence Notes:', '[Brief notes on key findings or interesting
+          patterns]', '---', '## Next Step: Validation', 'Would you like to validate these results?', '- If you have a **reference
+          table** (Excel file with expected TRUE/FALSE values), I can compare and calculate Cohen''s Kappa agreement metrics.',
+        '- If you don''t have a reference table, I can provide a final summary.', '**Do you have a reference table for validation?**',
+        '```', Store the results table in session state with key "analysis_results"., '## GUIDELINES:', '- Always confirm
+          with user before proceeding with analysis', '- Be thorough but efficient - use batch reading when possible', '-
+          Provide evidence for borderline cases', '- If an article is unclear, note it but make a decision', '- The table
+          should be ready for validation by the next stage', '- **ALWAYS ask about validation after completing analysis**',
+        '- **IMPORTANT: Analyze ALL papers returned by batch_read_pdfs - do not skip any!**', '- If batch_read_pdfs returns
+          10 papers, you MUST analyze all 10 papers', '- Report how many papers were found vs how many were analyzed']
+      output_key: analysis_results_output
+      generate_content_config:
+        ref: DEFAULT_RETRY_CONFIG
+      function: create_article_analyzer_agent
+  cross_comparison:
+    type: instance
+    models: [gemini-2.5-flash]
+    tools: [load_table, get_table_info, compare_tables_overview, compare_column_values, compare_multiple_columns, calculate_cohens_kappa,
+      calculate_all_agreement_metrics, get_disagreement_report, full_statistical_comparison]
+    params:
+      name: cross_comparison
+      description: Compares two Excel tables and provides statistical analysis.
+      instruction: [You are a statistical comparison specialist. You compare two Excel tables and provide detailed analysis.,
+        '## AVAILABLE TOOLS:', '### Overview Tools:', '- `load_table(file_path)` - Load a table and get its data', '- `get_table_info(file_path)`
+          - Get table metadata (columns, row count)', '- `compare_tables_overview(file_path_1, file_path_2)` - Compare structure
+          of two tables', '### Comparison Tools:', '- `compare_column_values(file_path_1, file_path_2, column_name, match_by)`
+          - Compare a single column', '- `compare_multiple_columns(file_path_1, file_path_2, column_names, match_by)` - Compare
+          multiple columns', '### Statistical Tools:', '- `calculate_cohens_kappa(file_path_1, file_path_2, column_name, match_by)`
+          - Cohen''s Kappa only', '- `calculate_all_agreement_metrics(file_path_1, file_path_2, column_name, match_by)` -
+          ALL metrics (recommended)', '- `get_disagreement_report(file_path_1, file_path_2, column_name, match_by)` - Detailed
+          disagreement analysis', '- `full_statistical_comparison(file_path_1, file_path_2, column_names, match_by)` - Comprehensive
+          analysis', '## AGREEMENT METRICS EXPLAINED:', '### Percent Agreement', '- Simple: (matches / total) × 100', '- ⚠️
+          Does NOT account for chance agreement', '- Use for quick overview only', '### Cohen''s Kappa (κ)', '- Accounts for
+          chance agreement', '- Most commonly used in research', '- ⚠️ Can be misleadingly low when prevalence is very high/low
+          ("Kappa Paradox")', '### Scott''s Pi (π)', '- Similar to Kappa but assumes both raters have same marginal distributions',
+        '- Good when raters are interchangeable', '### Gwet''s AC1', '- More stable than Kappa when prevalence is extreme',
+        '- Recommended when Kappa shows paradoxical results', '- Better for highly imbalanced data (mostly TRUE or mostly
+          FALSE)', '### Krippendorff''s Alpha (α)', '- Most flexible: handles missing data, multiple coders, ordinal/interval
+          data', '- Recommended for rigorous research publications', '- Standard threshold: α ≥ 0.667 for tentative conclusions,
+          α ≥ 0.8 for firm conclusions', '## INTERPRETATION SCALE (for Kappa, Pi, AC1, Alpha):', '- 0.81-1.00: Almost Perfect',
+        '- 0.61-0.80: Substantial', '- 0.41-0.60: Moderate', '- 0.21-0.40: Fair', '- 0.00-0.20: Slight', '- < 0: Poor (less
+          than chance)', '## WHEN TO USE WHICH METRIC:', '| Situation | Recommended Metric |', '|-----------|-------------------|',
+        '| Quick check | Percent Agreement |', '| Standard analysis | Cohen''s Kappa |', '| High/low prevalence | Gwet''s
+          AC1 |', '| Publication-quality | Krippendorff''s Alpha |', '| Kappa seems too low | Check AC1 for Kappa Paradox
+          |', '## DEFAULT PATHS:', '- Table 1: data/01/table_1.xlsx', '- Table 2: data/02/table_1.xlsx', '## EXAMPLES:', '-
+          "Compare Software column" → calculate_all_agreement_metrics("data/01/table_1.xlsx", "data/02/table_1.xlsx", "Software",
+          "Title")', '- "Give me all statistics" → calculate_all_agreement_metrics(...)', '- "Is there a Kappa paradox?" →
+          calculate_all_agreement_metrics(...) and check recommendation', 'Always provide clear, actionable insights from
+          the comparison results.']
+      output_key: comparison_result
+      generate_content_config:
+        ref: DEFAULT_RETRY_CONFIG
+      function: create_cross_comparison_agent
+  paper_classifier:
+    type: instance
+    models: [gemini-2.5-flash]
+    tools: [list_pdf_files, batch_read_pdfs, read_pdf_text, get_pdf_info]
+    params:
+      name: paper_classifier
+      description: Reads and classifies research papers based on specified criteria.
+      instruction: [You are a specialized agent for reading and classifying research papers., '## CRITICAL: YOU MUST USE TOOLS',
+        ⚠️ You CANNOT classify papers without first reading them!, ⚠️ You MUST call `batch_read_pdfs(directory)` FIRST to
+          get paper contents., ⚠️ DO NOT skip the tool call or make up classifications., '## YOUR TASK:', 'Given a classification
+          criterion and keywords, analyze research papers and determine if each paper', 'discusses the specified topic. Also
+          extract key metadata (title, authors, year) from each paper.', '## AVAILABLE TOOLS:', '- `batch_read_pdfs(directory)`:
+          Read ALL PDFs in parallel - returns all paper texts in ONE call', '- `list_pdf_files(directory)`: List all PDF files
+          in a directory', '- `read_pdf_text(file_path)`: Read a single PDF file', '- `get_pdf_info(file_path)`: Get metadata
+          about a PDF file', '## MANDATORY WORKFLOW - FOLLOW EXACTLY:', '### STEP 1: READ ALL PAPERS (REQUIRED!)', Call `batch_read_pdfs("test/Articles")`
+          or the provided directory., Wait for the results - this will return ALL paper contents., ⚠️ DO NOT SKIP THIS STEP
+          - you need the actual paper text to classify!, '### STEP 2: ANALYZE EACH PAPER', 'For each paper returned by batch_read_pdfs:',
+        'a. **Extract Metadata** (IMPORTANT for new papers not in Excel):', '- **Title**: Usually at the beginning, before
+          "Abstract"', '- **Authors**: Listed after title, before abstract (names separated by commas or "and")', '- **Year**:
+          Look in header/footer, references section, or publication info', 'b. Search for the provided keywords in:', '- Title
+          and abstract', '- Keywords section', '- Introduction and methodology', '- Conclusions', 'c. Determine if the paper
+          discusses the criterion:', '- **True**: The topic is explicitly discussed as a main theme or significant part',
+        '- **False**: The topic is not discussed or only briefly mentioned', '### STEP 3: COMPILE RESULTS', 'After analyzing
+          ALL papers, output the JSON result with your classifications.', '## INPUT FORMAT:', 'You will receive:', '- `articles_dir`:
+          Path to the directory containing PDF files (default: test/Articles)', '- `excel_path`: Path to the Excel file (IMPORTANT:
+          include this in your output!)', '- `criterion`: The classification criterion (e.g., "Regression Testing")', '- `keywords`:
+          List of keywords to search for', '- `description`: What qualifies as True for this criterion', '## OUTPUT FORMAT:',
+        Return a JSON object ONLY AFTER reading all papers. Include metadata fields!, '```json', '{', '"criterion": "<the
+          classification criterion - this will be the column name>",', '"articles_dir": "<directory path>",', '"excel_path":
+          "<path to the Excel file - MUST INCLUDE THIS>",', '"total_papers": <number>,', '"classifications": [', '{', '"file":
+          "<filename>",', '"title": "<paper title - extract from PDF>",', '"authors": "<author names - extract from PDF>",',
+        '"year": "<publication year - extract from PDF>",', '"result": true/false,', '"evidence": "<brief explanation with
+          quotes if possible>",', '"keywords_found": ["<found keywords>"],', '"confidence": "high|medium|low"', '}', '],',
+        '"summary": {', '"true_count": <number>,', '"false_count": <number>', '}', '}', '```', '## GUIDELINES:', '- ⚠️ ALWAYS
+          call batch_read_pdfs FIRST - you cannot classify without reading!', '- Be thorough - read enough of each paper to
+          make an informed decision', '- Look beyond just keyword matching - understand context', '- A paper mentioning a
+          term once in passing is NOT the same as discussing it', '- Provide clear evidence for your classification decisions',
+        '- ALWAYS include excel_path in your output', '- ALWAYS extract title, authors, and year for each paper', 'DEFAULT
+          PATH: test/Articles/ (use if not specified)', '⚠️ SCOPE: You ONLY read PDFs and determine classifications. You do
+          NOT touch Excel files.', The excel_handler will update the Excel file with your results using the title to match
+          rows.]
+      output_key: classification_result
+      generate_content_config:
+        ref: DEFAULT_RETRY_CONFIG
+      function: create_paper_classifier_agent
+  root_agent.0:
+    type: instance
+    models: [gemini-2.5-flash]
+    tools: [google_search]
+    params:
+      name: belo_llm_agent
+      description: A senior PhD-level researcher agent that formulates research questions.
+      instruction: ['You are Belo, a senior researcher with a PhD level of expertise. Your specialty is formulating and suggesting
+          research questions based on given topics.', '## WHAT YOU DO:', '- Help users formulate research questions on any
+          academic topic', '- Provide up to 5 well-crafted research questions per request', '- Use Google Search to find current
+          trends and gaps in research', '## WHEN THE REQUEST IS ABOUT RESEARCH:', 'Provide thoughtful, specific research questions
+          that are:', '- Clear and focused', '- Researchable (can be investigated empirically or theoretically)', '- Relevant
+          to current academic discourse', '- Novel or addressing gaps in existing literature', 'Format your response naturally,
+          like a helpful research advisor would. You can use bullet points or numbered lists.', '## WHEN THE REQUEST IS NOT
+          ABOUT RESEARCH:', Politely explain that you specialize in research question formulation and offer to help with that
+          instead., 'Example response for off-topic questions:', '"I''m Belo, a research specialist! 🎓 While I can''t help
+          with [their topic], I''d love to help you explore research questions on any academic subject. What topic are you
+          curious about researching?"', '## GUIDELINES:', '- Be warm and encouraging', '- Maximum 5 research questions per
+          request', '- If they ask for more than 5, explain you provide up to 5 focused questions', '- Only use JSON format
+          if the user specifically requests it, otherwise respond naturally', '- Do NOT include any markdown formatting, code
+          blocks, or additional text outside the JSON object.']
+      function: create_root_agent
+      instance: root_agent
+  root_agent.1:
+    type: instance
+    models: [gemini-2.5-flash]
+    params:
+      name: maestro_agent
+      function: create_maestro_agent
+      instance: root_agent
+  root_agent.2:
+    type: instance
+    models: [gemini-2.5-flash]
+    params:
+      name: zebra_llm_agent
+      function: create_zebra_llm_agent
+      instance: root_agent
+  root_agent.3:
+    type: instance
+    models: [gemini-2.5-flash]
+    params:
+      name: cross_agent
+      function: create_cross_agent
+      instance: root_agent
+  router.0:
+    type: instance
+    models: [gemini-2.5-flash]
+    params:
+      name: router
+      instruction: [Analyze the conversation context and determine what stage of the workflow we are in., 'The Maestro workflow
+          has THREE stages that MUST be followed sequentially:', '## STAGE 1: research_questions', User needs help formulating
+          research questions., 'Indicators:', '- User just started the conversation', '- User mentions wanting to research
+          something', '- User asks for help with questions', '- No research questions have been selected yet', '## STAGE 2:
+          article_analysis', User has selected research questions and needs to analyze articles., 'Indicators:', '- Research
+          questions have been selected/confirmed', '- User mentions having articles/PDFs', '- User wants to search for articles',
+        '- User is ready to analyze', '## STAGE 3: validation', Article analysis is complete and user wants to validate/summarize.,
+        'Indicators:', '- Analysis results exist', '- User mentions reference table', '- User asks for summary', '- User wants
+          to compare results', '## OUTPUT:', 'Output ONLY one of these words based on the current context:', '- "research_questions"
+          - Start with question formulation', '- "article_analysis" - Proceed to article analysis', '- "validation" - Perform
+          validation and summary', 'Consider the session state:', '- If "selected_questions" is empty → research_questions',
+        '- If "selected_questions" exists but "analysis_results" is empty → article_analysis', '- If "analysis_results" exists
+          → validation', 'Output ONLY the stage word, nothing else.']
+      output_key: current_stage
+      generate_content_config:
+        ref: DEFAULT_RETRY_CONFIG
+      function: __init__
+      instance: router
+  router.1:
+    type: instance
+    models: [gemini-2.5-flash]
+    params:
+      name: router
+      instruction: [Analyze the user's request and determine the workflow type(s)., 'Output ONE OR MORE of these words, comma-separated:',
+        '- "classify" - if user wants to classify/analyze papers based on some criterion', '- "excel" - if user wants to perform
+          Excel operations (delete column, update cell, get info, etc.)', '- "pdf" - if user just wants to read or list PDFs',
+        'For COMBINED requests, output multiple types in the order they should execute.', 'Examples:', '- "classify papers
+          based on software" → classify', '- "delete the Software column" → excel', '- "show me the columns" → excel', '-
+          "read the PDFs in test/Articles" → pdf', '- "find papers about regression testing" → classify', '- "update row 3"
+          → excel', '- "classify papers on ML then delete the Year column" → classify,excel', '- "read PDFs and update the
+          status column" → pdf,excel', '- "classify papers and show me the results" → classify,excel', '- "analyze papers
+          for testing coverage and then remove the old Classification column" → classify,excel', 'Output ONLY the word(s),
+          comma-separated if multiple, nothing else.']
+      output_key: request_type
+      generate_content_config:
+        ref: DEFAULT_RETRY_CONFIG
+      function: __init__
+      instance: router
+  router.2:
+    type: instance
+    models: [gemini-2.5-flash]
+    params:
+      name: router
+      instruction: [Analyze the user's request and determine the comparison type., 'Output ONE of these words:', '- "compare"
+          - if user wants to compare tables, columns, or get statistics', '- "info" - if user just wants information about
+          a table (columns, rows)', 'Examples:', '- "compare the Software column between two tables" → compare', '- "what
+          columns are in table1.xlsx" → info', '- "calculate Cohen''s Kappa for Regression" → compare', '- "show me the disagreements"
+          → compare', '- "how many rows in the first table" → info', '- "give me statistics for Testing column" → compare',
+        '- "full comparison of both tables" → compare', 'Output ONLY the word, nothing else.']
+      output_key: request_type
+      generate_content_config:
+        ref: DEFAULT_RETRY_CONFIG
+      function: __init__
+      instance: router
+  summarizer.0:
+    type: instance
+    models: [gemini-2.5-flash]
+    params:
+      name: summarizer
+      description: Provides final summary response to user after operations complete.
+      instruction: [You are the Zebra assistant providing a final summary to the user., 'Based on the results from the subagents
+          stored in the session state, provide a clear,', friendly confirmation message to the user about what was ALREADY
+          accomplished., '## CHECK THESE STATE KEYS:', '- `excel_result`: Results from Excel operations (add column, delete,
+          update, etc.)', '- `classification_result`: Results from paper classification', '- `request_type`: What type of
+          request was processed', '## YOUR RESPONSE SHOULD:', 1. Report what was ALREADY DONE (past tense) - the work is complete,
+        '2. Mention specific details:', '- Number of papers matched (existing rows updated)', '- Number of papers ADDED as
+          new rows (papers that weren''t in Excel before)', '- Number of unmatched papers (if any - this should be rare if
+          add_missing_rows=True was used)', '- Column name added/updated', '- File modified', 3. Be concise but informative,
+        4. Use a friendly tone with emojis where appropriate, '## IMPORTANT:', '- Use PAST TENSE - the actions have already
+          been completed by other agents', '- Do NOT say "I will..." - say "I have..." or "Done!"', '- Summarize the actual
+          results, don''t describe future actions', '- If papers were ADDED to Excel (not just matched), mention this specifically!',
+        '## EXAMPLES:', '- "✅ Done! I''ve added the column ''Software'' to your Excel file and updated 10 rows."', '- "✅ Classification
+          complete! Analyzed 5 papers - 3 matched existing rows, 2 were added as new rows. Results saved to Excel."', '- "✅
+          The ''Year'' column has been deleted from the Excel file."', '- "✅ Updated row 3: set ''Status'' to ''Complete''."',
+        '- "✅ Classification complete! 8 papers matched existing Excel rows, 3 papers were added as new rows. All 11 papers
+          now have classification values."', Always provide a response confirming what was done - never leave the user without
+          feedback.]
+      output_key: final_response
+      generate_content_config:
+        ref: DEFAULT_RETRY_CONFIG
+      function: create_summarizer_agent
+      instance: summarizer
+  summarizer.1:
+    type: instance
+    models: [gemini-2.5-flash]
+    params:
+      name: cross_summarizer
+      description: Provides final summary of cross-comparison results.
+      instruction: [You are the Cross Comparison assistant providing a final summary to the user., 'Based on the comparison
+          results from the session state, provide a clear,', professional statistical summary to the user., '## CHECK THESE
+          STATE KEYS:', '- `comparison_result`: Results from table comparison operations', '## YOUR RESPONSE SHOULD:', 1.
+          Report what comparison was ALREADY DONE (past tense), '2. Highlight key statistics (agreement rate, Cohen''s Kappa)',
+        3. Interpret the results in plain language, 4. Mention any notable disagreements, 5. Use tables or bullet points for
+          clarity, '## STATISTICAL INTERPRETATION:', 'When reporting Cohen''s Kappa, explain what it means:', '- κ ≥ 0.81:
+          "Almost perfect agreement - the two tables are highly consistent"', '- κ ≥ 0.61: "Substantial agreement - good consistency
+          between tables"', '- κ ≥ 0.41: "Moderate agreement - some inconsistencies exist"', '- κ ≥ 0.21: "Fair agreement
+          - notable differences between tables"', '- κ < 0.21: "Poor agreement - significant discrepancies found"', '## EXAMPLE
+          OUTPUT:', 📊 **Cross-Comparison Results**, '**Tables Compared:**', '- Table 1: data/01/table_1.xlsx (10 rows)', '-
+          Table 2: data/02/table_1.xlsx (10 rows)', '**Column: Software**', '- Agreement Rate: 80% (8/10 match)', '- Cohen''s
+          Kappa: 0.62 (Substantial agreement)', '- Disagreements: 2 rows differ', '**Summary:** The two tables show substantial
+          agreement on the Software column,', with only 2 items classified differently., '---', Always provide actionable
+          insights and clear interpretation of the statistics.]
+      output_key: final_response
+      generate_content_config:
+        ref: DEFAULT_RETRY_CONFIG
+      function: create_cross_summarizer_agent
+      instance: summarizer
+  validator:
+    type: instance
+    models: [gemini-2.5-flash]
+    tools: [load_table_from_excel, get_table_data, get_table_summary, compare_with_reference, compare_two_excel_files]
+    params:
+      name: validator
+      description: Validates analysis results and provides summaries with statistical metrics.
+      instruction: ['You are a Validator, a quality assurance specialist for systematic literature reviews.', '## YOUR ROLE:',
+        'You validate the analysis results by:', 1. Comparing with reference tables if available, 2. Calculating agreement
+          metrics, 3. Identifying discrepancies, 4. Providing comprehensive summaries, '## WORKFLOW:', '### Step 1: Ask for
+          Reference Data', 'Ask the user if they have:', '- A reference table to compare against (for inter-rater reliability)',
+        '- The path to where they saved their analysis results (if not already known)', '**If user has a reference table:**',
+        '1. Ask for BOTH file paths:', '- Path to the ANALYSIS results Excel file (the one created during article analysis)',
+        '- Path to the REFERENCE table Excel file', '2. Use `compare_two_excel_files(analysis_path, reference_path)` - THIS
+          IS THE PREFERRED METHOD', 3. This function directly compares two Excel files and calculates Cohen's Kappa, '**If
+          user has NO reference:**', 1. Skip comparison and proceed to summary, '2. If you have access to the analysis file,
+          use `load_table_from_excel()` then `get_table_summary()`', 3. Provide summary based on the analysis results, '###
+          Step 2: Calculate Metrics (if reference available)', 'For each research question column:', '- Agreement Rate (%
+          of matching classifications)', '- Cohen''s Kappa (inter-rater reliability)', '- List of disagreements with details',
+        '### Step 3: Generate Summary', 'Create a comprehensive summary including:', '- Overview of findings', '- Key statistics',
+        '- Patterns observed', '- Recommendations or notes', '## AVAILABLE TOOLS:', '### Table Tools:', '- `compare_two_excel_files(analysis_path,
+          reference_path)`: **PREFERRED** - Compare two Excel files directly and get all metrics including Cohen''s Kappa.
+          Use this when you have both files saved.', '- `load_table_from_excel(file_path)`: Load a table from Excel and set
+          it as current table', '- `get_table_data()`: Get current table contents', '- `get_table_summary()`: Get summary
+          statistics for current table', '- `compare_with_reference(reference_path)`: Compare current table with a reference
+          (requires current table to be set)', '## IMPORTANT:', '- The `compare_two_excel_files()` function is the MOST RELIABLE
+          method for comparison', '- It doesn''t depend on any global state - just provide both file paths', '- Always ask
+          the user for BOTH the analysis results file path AND the reference file path', '## INPUT:', 'You will receive from
+          session state:', '- `analysis_results`: The TRUE/FALSE table from article analyzer', '- User input about reference
+          table availability', '## OUTPUT FORMAT:', '### If Reference Table Provided:', '```', '## Validation Results', '###
+          Agreement Analysis', '| Question | Agreement Rate | Cohen''s Kappa | Interpretation |', '|----------|----------------|---------------|----------------|',
+        '| Q1 | 85% | 0.72 | Substantial |', '| Q2 | 92% | 0.84 | Almost Perfect |', '### Overall Metrics', '- Overall Agreement
+          Rate: X%', '- Average Cohen''s Kappa: X.XX (Interpretation)', '### Disagreements', '| Article | Question | Analysis
+          Result | Reference Value |', '|---------|----------|-----------------|-----------------|', '| Paper A | Q1 | TRUE
+          | FALSE |', '### Summary', '[Detailed summary of validation results]', '```', '### If No Reference:', '```', '##
+          Summary Report', '### Analysis Overview', '- Total Articles: X', '- Questions Analyzed: Y', '### Results Summary',
+        '| Question | TRUE Count | FALSE Count | Percentage TRUE |', '|----------|------------|-------------|-----------------|',
+        '| Q1 | X | Y | Z% |', '| Q2 | X | Y | Z% |', '### Key Findings', '1. [Finding 1]', '2. [Finding 2]', "...", '###
+          Patterns & Observations', '[Any notable patterns in the data]', '### Recommendations', '[Suggestions for further
+          research or analysis]', '```', '## COHEN''S KAPPA INTERPRETATION:', '- < 0.00: Poor', '- 0.00 - 0.20: Slight', '-
+          0.21 - 0.40: Fair', '- 0.41 - 0.60: Moderate', '- 0.61 - 0.80: Substantial', '- 0.81 - 1.00: Almost Perfect', '##
+          GUIDELINES:', '- Be objective and thorough in validation', '- Highlight both agreements and disagreements', '- Provide
+          actionable insights', '- If no reference is provided, focus on summarizing patterns', '- End with clear conclusions
+          and recommendations', '- **ALWAYS use compare_two_excel_files() when user provides both file paths**']
+      output_key: validation_output
+      generate_content_config:
+        ref: DEFAULT_RETRY_CONFIG
+      function: create_validator_agent
+
+models:
+  gemini-2.5-flash:
+    type: function
+    agents: [cross_comparison, agent.0, root_agent.0, agent.1, router.0, root_agent.1, router.1, root_agent.2, summarizer.1,
+      article_analyzer, summarizer.0, paper_classifier, router.2, root_agent.3, validator, agent.2, agent.3, agent.4]
+    params:
+      wrapper: Gemini
+      model: gemini-2.5-flash
+
+tools:
+  add_column_to_excel:
+    type: function
+    agents: [agent.1]
+    params:
+      description: |-
+        Adds a new column to an Excel file if it does not exist.
+
+        Args:
+            file_path: The path to the Excel file.
+            column_name: The name of the column to add.
+            default_value: The default value for the new column (default: empty string).
+
+        Returns:
+            Dictionary with success status and message.
+  add_paper_row:
+    type: function
+    agents: [agent.1]
+    params:
+      description: |-
+        Adds a new paper row to the Excel file.
+        Use this when you have a paper that doesn't exist in the Excel yet.
+
+        Args:
+            file_path: The path to the Excel file.
+            title: The title of the paper to add.
+            data: Optional JSON string of column_name: value pairs to populate the row.
+                  Example: '{"Year": "2024", "Authors": "Smith et al.", "Regression Testing": "TRUE"}'
+            title_column: The column name for the title (default: "Title").
+
+        Returns:
+            Dictionary with success status and the new row index.
+
+        Example:
+            add_paper_row(
+                "test/table_1.xlsx",
+                "New Paper Title",
+                '{"Year": "2024", "Authors": "Smith et al.", "Regression Testing": "TRUE"}'
+            )
+  add_result_row:
+    type: function
+    agents: [article_analyzer]
+    params:
+      description: |-
+        Add a row of results for an article.
+
+        Args:
+            article_title: Title or identifier of the article.
+            results: Dictionary mapping question keys (Q1, Q2, etc.) to TRUE/FALSE values.
+
+        Returns:
+            Dictionary with success status.
+  batch_read_pdfs:
+    type: function
+    agents: [article_analyzer, paper_classifier]
+    params:
+      description: |-
+        Read multiple PDF files in parallel for faster processing.
+
+        This function reads all PDFs in a directory concurrently using thread pooling,
+        significantly reducing total processing time compared to sequential reading.
+
+        Args:
+            directory: Path to the directory containing PDF files.
+            max_workers: Maximum number of concurrent readers (default: 5).
+                        Higher values = faster but more memory usage.
+
+        Returns:
+            Dictionary with:
+            - papers: List of paper data with filename, text, and metadata
+            - total_count: Number of PDFs processed
+            - success_count: Number successfully read
+            - failed_count: Number that failed to read
+            - errors: List of any errors encountered
+
+        Example:
+            >>> result = batch_read_pdfs("data/01/", max_workers=5)
+            >>> for paper in result["papers"]:
+            ...     print(f"{paper['filename']}: {paper['word_count']} words")
+  batch_update_cells:
+    type: function
+    agents: [agent.1]
+    params:
+      description: |-
+        Updates multiple cells in an Excel file in a single operation.
+        Much more efficient than calling update_excel_row multiple times.
+        Boolean values (True/False) are automatically normalized to uppercase strings.
+
+        Args:
+            file_path: The path to the Excel file.
+            updates: JSON string containing a list of updates, each with 'row_index', 'column_name', and 'value'.
+                     Example: '[{"row_index": 0, "column_name": "Status", "value": "TRUE"},
+                               {"row_index": 1, "column_name": "Status", "value": "FALSE"}]'
+
+        Returns:
+            Dictionary with success status and details.
+  calculate_all_agreement_metrics:
+    type: function
+    agents: [cross_comparison]
+    params:
+      description: |-
+        Calculate multiple agreement metrics for comprehensive analysis.
+
+        Includes:
+        - Percent Agreement (simple agreement rate)
+        - Cohen's Kappa (accounts for chance agreement)
+        - Scott's Pi (assumes same marginal distributions)
+        - Gwet's AC1 (robust when prevalence is high/low)
+        - Krippendorff's Alpha (handles missing data, multiple coders)
+
+        Args:
+            file_path_1: Path to the first Excel file.
+            file_path_2: Path to the second Excel file.
+            column_name: The column to analyze.
+            match_by: Column to use for matching rows.
+
+        Returns:
+            Dictionary with all agreement metrics.
+  calculate_cohens_kappa:
+    type: function
+    agents: [cross_comparison]
+    params:
+      description: |-
+        Calculate Cohen's Kappa for inter-rater reliability on a binary column.
+
+        Cohen's Kappa measures agreement between two raters, accounting for chance agreement.
+        - κ = 1: Perfect agreement
+        - κ = 0: Agreement equivalent to chance
+        - κ < 0: Less than chance agreement
+
+        Interpretation:
+        - 0.81-1.00: Almost perfect
+        - 0.61-0.80: Substantial
+        - 0.41-0.60: Moderate
+        - 0.21-0.40: Fair
+        - 0.00-0.20: Slight
+        - < 0: Poor
+
+        Args:
+            file_path_1: Path to the first Excel file.
+            file_path_2: Path to the second Excel file.
+            column_name: The binary column to analyze.
+            match_by: Column to use for matching rows.
+
+        Returns:
+            Dictionary with Cohen's Kappa and interpretation.
+  clear_cell:
+    type: function
+    agents: [agent.1]
+    params:
+      description: |-
+        Clears (sets to empty) a specific cell in an Excel file.
+
+        Args:
+            file_path: The path to the Excel file.
+            row_index: The row index (0-based, excluding header).
+            column_name: The column name.
+
+        Returns:
+            Dictionary with success status and message.
+  compare_column_values:
+    type: function
+    agents: [cross_comparison]
+    params:
+      description: |-
+        Compare values in a specific column between two tables.
+
+        Args:
+            file_path_1: Path to the first Excel file.
+            file_path_2: Path to the second Excel file.
+            column_name: The column to compare.
+            match_by: Column to use for matching rows (e.g., "Title"). If None, compares by row index.
+
+        Returns:
+            Dictionary with comparison results and statistics.
+  compare_multiple_columns:
+    type: function
+    agents: [cross_comparison]
+    params:
+      description: |-
+        Compare multiple columns between two tables.
+
+        Args:
+            file_path_1: Path to the first Excel file.
+            file_path_2: Path to the second Excel file.
+            column_names: List of columns to compare.
+            match_by: Column to use for matching rows.
+
+        Returns:
+            Dictionary with comparison results for all columns.
+  compare_tables_overview:
+    type: function
+    agents: [cross_comparison]
+    params:
+      description: |-
+        Get an overview comparison of two tables (columns, row counts).
+
+        Args:
+            file_path_1: Path to the first Excel file.
+            file_path_2: Path to the second Excel file.
+
+        Returns:
+            Dictionary with overview comparison.
+  compare_two_excel_files:
+    type: function
+    agents: [validator]
+    params:
+      description: |-
+        Compare two Excel files directly without relying on global state.
+
+        This is the PREFERRED method for comparing analysis results with a reference table.
+        Use this when you have both files saved to disk.
+
+        Args:
+            analysis_path: Path to the Excel file with analysis results (your results).
+            reference_path: Path to the reference Excel file (ground truth/expert results).
+            match_column: Column to match rows by (default: "Article").
+
+        Returns:
+            Dictionary with comparison metrics including Cohen's Kappa.
+  compare_with_reference:
+    type: function
+    agents: [validator]
+    params:
+      description: |-
+        Compare the current results table with a reference table.
+
+        Args:
+            reference_path: Path to the reference Excel file.
+            match_column: Column to match rows by (default: "Article").
+
+        Returns:
+            Dictionary with comparison metrics including Cohen's Kappa.
+  create_results_table:
+    type: function
+    agents: [article_analyzer]
+    params:
+      description: |-
+        Create a new results table with the given research questions as columns.
+
+        Args:
+            questions: List of research questions to use as column headers.
+
+        Returns:
+            Dictionary with table structure information.
+  delete_excel_column:
+    type: function
+    agents: [agent.1]
+    params:
+      description: |-
+        Deletes a column from an Excel file.
+
+        Args:
+            file_path: The path to the Excel file.
+            column_name: The name of the column to delete.
+
+        Returns:
+            Dictionary with success status and message.
+  delete_excel_row:
+    type: function
+    agents: [agent.1]
+    params:
+      description: |-
+        Deletes a row from an Excel file.
+
+        Args:
+            file_path: The path to the Excel file.
+            row_index: The row index to delete (0-based, excluding header).
+
+        Returns:
+            Dictionary with success status and message.
+  excel_to_json:
+    type: function
+    agents: [agent.1]
+    params:
+      description: |-
+        Reads an Excel file and converts its header to a JSON dictionary keys.
+        The keys will be passed to LLM for data filling.
+
+        Args:
+            file_path: The path to the Excel file.
+
+        Returns:
+            Dictionary with column names as keys.
+  find_pdf_files:
+    type: function
+    agents: [article_analyzer]
+    params:
+      description: |-
+        Search for PDF files in common upload directories.
+
+        This is useful when files are uploaded via ADK web interface
+        and the exact directory is unknown.
+
+        Returns:
+            Dictionary with found PDF files and their locations.
+  find_row_by_title:
+    type: function
+    agents: [agent.1]
+    params:
+      description: |-
+        Finds the row index in an Excel file that matches a given paper title.
+        Uses case-insensitive partial matching.
+
+        Args:
+            file_path: The path to the Excel file.
+            paper_title: The title of the paper to find.
+            title_column: The column name containing titles (default: "Title").
+
+        Returns:
+            Dictionary with row_index if found, or error if not found.
+  full_statistical_comparison:
+    type: function
+    agents: [cross_comparison]
+    params:
+      description: |-
+        Perform a full statistical comparison of multiple columns between two tables.
+        Includes agreement rates, Cohen's Kappa, and disagreement summaries.
+
+        Args:
+            file_path_1: Path to the first Excel file.
+            file_path_2: Path to the second Excel file.
+            column_names: List of columns to compare.
+            match_by: Column to use for matching rows.
+
+        Returns:
+            Dictionary with comprehensive statistical analysis.
+  get_cell_value:
+    type: function
+    agents: [agent.1]
+    params:
+      description: |-
+        Gets the value of a specific cell in an Excel file.
+
+        Args:
+            file_path: The path to the Excel file.
+            row_index: The row index (0-based, excluding header).
+            column_name: The column name.
+
+        Returns:
+            Dictionary with the cell value.
+  get_disagreement_report:
+    type: function
+    agents: [cross_comparison]
+    params:
+      description: |-
+        Get a detailed report of all disagreements between two tables for a column.
+
+        Args:
+            file_path_1: Path to the first Excel file.
+            file_path_2: Path to the second Excel file.
+            column_name: The column to analyze.
+            match_by: Column to use for matching rows.
+
+        Returns:
+            Dictionary with detailed disagreement report.
+  get_excel_columns:
+    type: function
+    agents: [agent.1]
+    params:
+      description: |-
+        Gets the list of column names from an Excel file.
+
+        Args:
+            file_path: The path to the Excel file.
+
+        Returns:
+            Dictionary with column names and count.
+  get_excel_info:
+    type: function
+    agents: [agent.1]
+    params:
+      description: |-
+        Gets general information about an Excel file (rows, columns, preview).
+
+        Args:
+            file_path: The path to the Excel file.
+
+        Returns:
+            Dictionary with file information.
+  get_pdf_info:
+    type: function
+    agents: [article_analyzer, paper_classifier]
+    params:
+      description: |-
+        Get comprehensive metadata and statistics about a PDF.
+
+        Args:
+            file_path: Path to the PDF file.
+
+        Returns:
+            Dictionary with PDF metadata.
+  get_table_data:
+    type: function
+    agents: [article_analyzer, validator]
+    params:
+      description: |-
+        Get the current table contents.
+
+        Returns:
+            Dictionary with table data.
+  get_table_info:
+    type: function
+    agents: [cross_comparison]
+    params:
+      description: |-
+        Get metadata about a table without loading all data.
+
+        Args:
+            file_path: Path to the Excel file.
+
+        Returns:
+            Dictionary with table metadata.
+  get_table_summary:
+    type: function
+    agents: [article_analyzer, validator]
+    params:
+      description: |-
+        Get summary statistics for the current table.
+
+        Returns:
+            Dictionary with summary statistics for each question.
+  google_search:
+    type: module
+    agents: [root_agent.0]
+  list_pdf_files:
+    type: function
+    agents: [agent.1, article_analyzer, paper_classifier]
+    params:
+      description: |-
+        Lists all PDF files in a directory.
+
+        Args:
+            directory: The path to the directory.
+
+        Returns:
+            List of absolute paths to PDF files.
+  load_table:
+    type: function
+    agents: [cross_comparison]
+    params:
+      description: |-
+        Load an Excel table and return its data.
+
+        Args:
+            file_path: Path to the Excel file.
+
+        Returns:
+            Dictionary with table data and metadata.
+  load_table_from_excel:
+    type: function
+    agents: [validator]
+    params:
+      description: |-
+        Load a table from an Excel file for comparison.
+        Also sets it as the current table for subsequent operations.
+
+        Args:
+            file_path: Path to the Excel file.
+
+        Returns:
+            Dictionary with loaded table data.
+  read_excel_data:
+    type: function
+    agents: [agent.1]
+    params:
+      description: |-
+        Reads an Excel file and returns all rows as a list of dictionaries.
+
+        Args:
+            file_path: The path to the Excel file.
+
+        Returns:
+            List of dictionaries, each representing a row.
+  read_pdf_text:
+    type: function
+    agents: [article_analyzer, paper_classifier]
+    params:
+      description: |-
+        Extract text content from all PDF pages.
+
+        Args:
+            file_path: Path to the PDF file.
+
+        Returns:
+            Dictionary with extracted text and metadata.
+  save_table_to_excel:
+    type: function
+    agents: [article_analyzer]
+    params:
+      description: |-
+        Save the current table to an Excel file.
+
+        Args:
+            file_path: Path to save the Excel file.
+
+        Returns:
+            Dictionary with success status and file info.
+  transform_column:
+    type: function
+    agents: [agent.1]
+    params:
+      description: |-
+        Applies a transformation to ALL values in a column.
+        Use this for bulk operations like capitalizing, uppercasing, etc.
+
+        Args:
+            file_path: The path to the Excel file.
+            column_name: The name of the column to transform.
+            transformation: The transformation to apply. Options:
+                           - "uppercase": Convert to UPPERCASE (e.g., "true" becomes "TRUE")
+                           - "lowercase": Convert to lowercase (e.g., "TRUE" becomes "true")
+                           - "capitalize": Capitalize first letter (e.g., "true" becomes "True")
+                           - "title": Title Case (e.g., "hello world" becomes "Hello World")
+                           - "strip": Remove leading/trailing whitespace
+
+        Returns:
+            Dictionary with success status and details.
+  update_classification_by_title:
+    type: function
+    agents: [agent.1]
+    params:
+      description: |-
+        Updates classification results in Excel by matching paper titles to rows.
+        If a paper is not found in the Excel and add_missing_rows=True, a new row is added.
+        This is the PREFERRED method for saving classification results as it ensures
+        values are placed in the correct rows by matching paper titles.
+
+        Args:
+            file_path: The path to the Excel file.
+            classifications: JSON string containing list of classification results, each with:
+                            - 'title': The paper title to match
+                            - 'result': The classification value (True/False or any string)
+                            Optional:
+                            - 'file': The PDF filename
+                            - 'evidence': Classification evidence/reasoning
+                            Example: '[{"title": "Paper A", "result": true}, {"title": "Paper B", "result": false}]'
+            column_name: The name of the column to update/create with classification values.
+            title_column: The column in Excel containing paper titles (default: "Title").
+            add_missing_rows: If True, papers not found in Excel will be added as new rows (default: True).
+
+        Returns:
+            Dictionary with success status, matched/unmatched/added counts, and details.
+
+        Example:
+            update_classification_by_title(
+                "test/table_1.xlsx",
+                '[{"title": "Paper A", "result": true}, {"title": "Paper B", "result": false}]',
+                "Regression Testing",
+                add_missing_rows=True
+            )
+  update_excel_row:
+    type: function
+    agents: [agent.1]
+    params:
+      description: |-
+        Updates a specific cell in an Excel file.
+        Boolean values (True/False) are automatically normalized to uppercase strings.
+
+        Args:
+            file_path: The path to the Excel file.
+            row_index: The row index (0-based, excluding header).
+            column_name: The column name to update.
+            value: The value to set (as string).
+
+        Returns:
+            Dictionary with success status and message.
+  update_result_cell:
+    type: function
+    agents: [article_analyzer]
+    params:
+      description: |-
+        Update a specific cell in the results table.
+
+        Args:
+            article_title: Title of the article (row identifier).
+            question_key: Question column key (Q1, Q2, etc.).
+            value: TRUE or FALSE.
+
+        Returns:
+            Dictionary with success status.
+
+imports:
+  add_column_to_excel: tools.excel_tools.add_column_to_excel
+  add_paper_row: tools.excel_tools.add_paper_row
+  add_result_row: tools.table_tools.add_result_row
+  Agent: google.adk.agents.Agent
+  agent: agent
+  Any: typing.Any
+  ARTICLE_ANALYZER_INSTRUCTION: instructions.article_analyzer_instruction.ARTICLE_ANALYZER_INSTRUCTION
+  AsyncGenerator: typing.AsyncGenerator
+  asyncio: asyncio
+  BaseAgent: google.adk.agents.BaseAgent
+  batch_read_pdfs: tools.pdf_tools.batch_read_pdfs
+  batch_update_cells: tools.excel_tools.batch_update_cells
+  calculate_all_agreement_metrics: tools.cross_tools.calculate_all_agreement_metrics
+  calculate_cohens_kappa: tools.cross_tools.calculate_cohens_kappa
+  clear_cell: tools.excel_tools.clear_cell
+  compare_column_values: tools.cross_tools.compare_column_values
+  compare_multiple_columns: tools.cross_tools.compare_multiple_columns
+  compare_tables_overview: tools.cross_tools.compare_tables_overview
+  compare_two_excel_files: tools.table_tools.compare_two_excel_files
+  compare_with_reference: tools.table_tools.compare_with_reference
+  create_article_analyzer_agent: article_analyzer.create_article_analyzer_agent
+  create_cross_comparison_agent: subagents.cross_comparison.create_cross_comparison_agent
+  create_cross_summarizer_agent: subagents.summarizer.create_cross_summarizer_agent
+  create_excel_handler_agent: subagents.excel_handler.create_excel_handler_agent
+  create_maestro_agent: agent.create_maestro_agent
+  create_paper_classifier_agent: subagents.paper_classifier.create_paper_classifier_agent
+  create_research_advisor_agent: research_advisor.create_research_advisor_agent
+  create_results_table: tools.table_tools.create_results_table
+  create_summarizer_agent: subagents.summarizer.create_summarizer_agent
+  create_validator_agent: validator.create_validator_agent
+  CROSS_COMPARISON_INSTRUCTION: instructions.cross_comparison_instruction.CROSS_COMPARISON_INSTRUCTION
+  CROSS_ROUTER_INSTRUCTION: subagents.instructions.cross_router_instruction.CROSS_ROUTER_INSTRUCTION
+  CROSS_SUMMARIZER_INSTRUCTION: instructions.cross_summarizer_instruction.CROSS_SUMMARIZER_INSTRUCTION
+  DEFAULT_RETRY_CONFIG: rate_limit.DEFAULT_RETRY_CONFIG
+  delete_excel_column: tools.excel_tools.delete_excel_column
+  delete_excel_row: tools.excel_tools.delete_excel_row
+  Dict: typing.Dict
+  Event: google.adk.events.Event
+  EXCEL_HANDLER_INSTRUCTION: instructions.excel_handler_instruction.EXCEL_HANDLER_INSTRUCTION
+  excel_to_json: tools.excel_tools.excel_to_json
+  find_pdf_files: tools.pdf_tools.find_pdf_files
+  find_row_by_title: tools.excel_tools.find_row_by_title
+  fitz: fitz
+  full_statistical_comparison: tools.cross_tools.full_statistical_comparison
+  futures: concurrent.futures
+  Gemini: google.adk.models.google_llm.Gemini
+  genai: google.genai
+  get_cell_value: tools.excel_tools.get_cell_value
+  get_disagreement_report: tools.cross_tools.get_disagreement_report
+  get_excel_columns: tools.excel_tools.get_excel_columns
+  get_excel_info: tools.excel_tools.get_excel_info
+  get_pdf_info: tools.pdf_tools.get_pdf_info
+  get_table_data: tools.table_tools.get_table_data
+  get_table_info: tools.cross_tools.get_table_info
+  get_table_summary: tools.table_tools.get_table_summary
+  google_search: google.adk.tools.google_search
+  Image: PIL.Image
+  InMemoryRunner: google.adk.runners.InMemoryRunner
+  InvocationContext: google.adk.agents.invocation_context.InvocationContext
+  io: io
+  json: json
+  List: typing.List
+  list_pdf_files: tools.excel_tools.list_pdf_files
+  LlmAgent: google.adk.agents.LlmAgent
+  load_dotenv: dotenv.load_dotenv
+  load_table: tools.cross_tools.load_table
+  load_table_from_excel: tools.table_tools.load_table_from_excel
+  load_workbook: openpyxl.load_workbook
+  logging: logging
+  MAESTRO_ROUTER_INSTRUCTION: subagents.instructions.maestro_router_instruction.MAESTRO_ROUTER_INSTRUCTION
+  np: numpy
+  Optional: typing.Optional
+  os: os
+  override: typing_extensions.override
+  PAPER_CLASSIFIER_INSTRUCTION: instructions.paper_classifier_instruction.PAPER_CLASSIFIER_INSTRUCTION
+  pd: pandas
+  pytesseract: pytesseract
+  re: re
+  read_excel_data: tools.excel_tools.read_excel_data
+  read_pdf_text: tools.pdf_tools.read_pdf_text
+  RESEARCH_ADVISOR_INSTRUCTION: instructions.research_advisor_instruction.RESEARCH_ADVISOR_INSTRUCTION
+  root_agent: agent.root_agent
+  ROUTER_INSTRUCTION: subagents.instructions.router_instruction.ROUTER_INSTRUCTION
+  save_table_to_excel: tools.table_tools.save_table_to_excel
+  sys: sys
+  traceback: traceback
+  transform_column: tools.excel_tools.transform_column
+  Tuple: typing.Tuple
+  types: google.genai.types
+  update_classification_by_title: subagents.tools.excel_tools.update_classification_by_title
+  update_excel_row: tools.excel_tools.update_excel_row
+  update_result_cell: tools.table_tools.update_result_cell
+  VALIDATOR_INSTRUCTION: instructions.validator_instruction.VALIDATOR_INSTRUCTION
+  ZEBRA_SUMMARIZER_INSTRUCTION: instructions.zebra_summarizer_instruction.ZEBRA_SUMMARIZER_INSTRUCTION
+
+functions:
+  __init__:
+    type: sync
+    module: agents.cross.agent
+    args: [self, name]
+  _batch_update_excel:
+    type: sync
+    module: agents.zebra.subagents.tools.excel_tools
+    args: [file_path, updates]
+    params:
+      returns: Dict
+  _calculate_cohens_kappa:
+    type: sync
+    module: agents.maestro.subagents.tools.table_tools
+    args: [list1, list2]
+    params:
+      returns: float
+  _extract_excel_path_from_prompt:
+    type: sync
+    module: agents.zebra.agent
+    args: [prompt]
+    params:
+      returns: str
+  _extract_json_from_text:
+    type: sync
+    module: agents.zebra.agent
+    args: [text]
+    params:
+      returns: dict
+  _get_metric_recommendation:
+    type: sync
+    module: agents.cross.subagents.tools.cross_tools
+    args: [tp, tn, fp, fn, kappa, ac1]
+    params:
+      returns: str
+  _interpret_kappa:
+    type: sync
+    module: agents.maestro.subagents.tools.table_tools
+    args: [kappa]
+    params:
+      returns: str
+  _normalize_boolean_value:
+    type: sync
+    module: agents.zebra.subagents.tools.excel_tools
+    args: [value]
+    params:
+      returns: str
+  _read_single_pdf:
+    type: sync
+    module: agents.zebra.subagents.tools.pdf_tools
+    args: [file_path]
+    params:
+      returns: Dict
+  _run_agent_async:
+    type: async
+    module: agents.cross.agent
+    args: [prompt, max_retries]
+  _run_async_impl:
+    type: async
+    module: agents.cross.agent
+    args: [self, ctx]
+    params:
+      returns: AsyncGenerator
+  add_column_to_excel:
+    type: sync
+    module: agents.zebra.subagents.tools.excel_tools
+    args: [file_path, column_name, default_value]
+    params:
+      returns: Dict
+  add_paper_row:
+    type: sync
+    module: agents.zebra.subagents.tools.excel_tools
+    args: [file_path, title, data, title_column]
+    params:
+      returns: dict
+  add_result_row:
+    type: sync
+    module: agents.maestro.subagents.tools.table_tools
+    args: [article_title, results]
+    params:
+      returns: Dict
+  analyze_pdf_structure:
+    type: sync
+    module: agents.zebra.subagents.tools.pdf_tools
+    args: [file_path]
+    params:
+      returns: Dict
+  batch_read_pdfs:
+    type: sync
+    module: agents.zebra.subagents.tools.pdf_tools
+    args: [directory, max_workers]
+    params:
+      returns: Dict
+  batch_update_cells:
+    type: sync
+    module: agents.zebra.subagents.tools.excel_tools
+    args: [file_path, updates]
+    params:
+      returns: dict
+  calculate_all_agreement_metrics:
+    type: sync
+    module: agents.cross.subagents.tools.cross_tools
+    args: [file_path_1, file_path_2, column_name, match_by]
+    params:
+      returns: Dict
+  calculate_cohens_kappa:
+    type: sync
+    module: agents.cross.subagents.tools.cross_tools
+    args: [file_path_1, file_path_2, column_name, match_by]
+    params:
+      returns: Dict
+  clear_cell:
+    type: sync
+    module: agents.zebra.subagents.tools.excel_tools
+    args: [file_path, row_index, column_name]
+    params:
+      returns: Dict
+  compare_column_values:
+    type: sync
+    module: agents.cross.subagents.tools.cross_tools
+    args: [file_path_1, file_path_2, column_name, match_by]
+    params:
+      returns: Dict
+  compare_multiple_columns:
+    type: sync
+    module: agents.cross.subagents.tools.cross_tools
+    args: [file_path_1, file_path_2, column_names, match_by]
+    params:
+      returns: Dict
+  compare_tables:
+    type: sync
+    module: agents.cross.agent
+    args: [table1_path, table2_path, columns, match_by]
+    params:
+      returns: str
+  compare_tables_overview:
+    type: sync
+    module: agents.cross.subagents.tools.cross_tools
+    args: [file_path_1, file_path_2]
+    params:
+      returns: Dict
+  compare_two_excel_files:
+    type: sync
+    module: agents.maestro.subagents.tools.table_tools
+    args: [analysis_path, reference_path, match_column]
+    params:
+      returns: Dict
+  compare_with_reference:
+    type: sync
+    module: agents.maestro.subagents.tools.table_tools
+    args: [reference_path, match_column]
+    params:
+      returns: Dict
+  create_article_analyzer_agent:
+    type: sync
+    module: agents.maestro.subagents.article_analyzer
+    params:
+      returns: LlmAgent
+  create_cross_agent:
+    type: sync
+    module: agents.cross.agent
+  create_cross_comparison_agent:
+    type: sync
+    module: agents.cross.subagents.cross_comparison
+    params:
+      returns: LlmAgent
+  create_cross_summarizer_agent:
+    type: sync
+    module: agents.cross.subagents.summarizer
+    params:
+      returns: LlmAgent
+  create_excel_handler_agent:
+    type: sync
+    module: agents.zebra.subagents.excel_handler
+    params:
+      returns: LlmAgent
+  create_maestro_agent:
+    type: sync
+    module: agents.maestro.agent
+  create_paper_classifier_agent:
+    type: sync
+    module: agents.zebra.subagents.paper_classifier
+    params:
+      returns: LlmAgent
+  create_research_advisor_agent:
+    type: sync
+    module: agents.maestro.subagents.research_advisor
+    params:
+      returns: LlmAgent
+  create_results_table:
+    type: sync
+    module: agents.maestro.subagents.tools.table_tools
+    args: [questions]
+    params:
+      returns: Dict
+  create_root_agent:
+    type: sync
+    module: agents.belo.agent
+  create_summarizer_agent:
+    type: sync
+    module: agents.zebra.subagents.summarizer
+    params:
+      returns: LlmAgent
+  create_validator_agent:
+    type: sync
+    module: agents.maestro.subagents.validator
+    params:
+      returns: LlmAgent
+  create_zebra_llm_agent:
+    type: sync
+    module: agents.zebra.agent
+  data_template_filler:
+    type: sync
+    module: agents.zebra.subagents.tools.excel_tools
+    args: [json_template, paper_text, research_paper_title]
+    params:
+      returns: dict
+  delete_excel_column:
+    type: sync
+    module: agents.zebra.subagents.tools.excel_tools
+    args: [file_path, column_name]
+    params:
+      returns: Dict
+  delete_excel_row:
+    type: sync
+    module: agents.zebra.subagents.tools.excel_tools
+    args: [file_path, row_index]
+    params:
+      returns: Dict
+  excel_to_json:
+    type: sync
+    module: agents.zebra.subagents.tools.excel_tools
+    args: [file_path]
+    params:
+      returns: dict
+  extract_pdf_images:
+    type: sync
+    module: agents.zebra.subagents.tools.pdf_tools
+    args: [file_path]
+    params:
+      returns: Dict
+  find_pdf_files:
+    type: sync
+    module: agents.maestro.subagents.tools.pdf_tools
+    params:
+      returns: Dict
+  find_row_by_title:
+    type: sync
+    module: agents.zebra.subagents.tools.excel_tools
+    args: [file_path, paper_title, title_column]
+    params:
+      returns: Dict
+  full_statistical_comparison:
+    type: sync
+    module: agents.cross.subagents.tools.cross_tools
+    args: [file_path_1, file_path_2, column_names, match_by]
+    params:
+      returns: Dict
+  get_cell_value:
+    type: sync
+    module: agents.zebra.subagents.tools.excel_tools
+    args: [file_path, row_index, column_name]
+    params:
+      returns: Dict
+  get_disagreement_report:
+    type: sync
+    module: agents.cross.subagents.tools.cross_tools
+    args: [file_path_1, file_path_2, column_name, match_by]
+    params:
+      returns: Dict
+  get_excel_columns:
+    type: sync
+    module: agents.zebra.subagents.tools.excel_tools
+    args: [file_path]
+    params:
+      returns: Dict
+  get_excel_info:
+    type: sync
+    module: agents.zebra.subagents.tools.excel_tools
+    args: [file_path]
+    params:
+      returns: Dict
+  get_pdf_info:
+    type: sync
+    module: agents.zebra.subagents.tools.pdf_tools
+    args: [file_path]
+    params:
+      returns: Dict
+  get_retry_config:
+    type: sync
+    module: agents.maestro.subagents.rate_limit
+    args: [initial_delay, attempts]
+    params:
+      returns: types.GenerateContentConfig
+  get_table_data:
+    type: sync
+    module: agents.maestro.subagents.tools.table_tools
+    params:
+      returns: Dict
+  get_table_info:
+    type: sync
+    module: agents.cross.subagents.tools.cross_tools
+    args: [file_path]
+    params:
+      returns: Dict
+  get_table_summary:
+    type: sync
+    module: agents.maestro.subagents.tools.table_tools
+    params:
+      returns: Dict
+  interpret:
+    type: sync
+    module: agents.cross.subagents.tools.cross_tools
+    args: [value]
+  list_pdf_files:
+    type: sync
+    module: agents.zebra.subagents.tools.excel_tools
+    args: [directory]
+    params:
+      returns: List[str]
+  llm_reviewer:
+    type: sync
+    module: agents.zebra.agent
+    args: [articles_dir, excel_path, user_query]
+    params:
+      returns: str
+  load_table:
+    type: sync
+    module: agents.cross.subagents.tools.cross_tools
+    args: [file_path]
+    params:
+      returns: Dict
+  load_table_from_excel:
+    type: sync
+    module: agents.maestro.subagents.tools.table_tools
+    args: [file_path]
+    params:
+      returns: Dict
+  normalize:
+    type: sync
+    module: agents.cross.subagents.tools.cross_tools
+    args: [val]
+  read_excel_data:
+    type: sync
+    module: agents.zebra.subagents.tools.excel_tools
+    args: [file_path]
+    params:
+      returns: List[Dict]
+  read_pdf_text:
+    type: sync
+    module: agents.zebra.subagents.tools.pdf_tools
+    args: [file_path]
+    params:
+      returns: Dict
+  read_pdf_with_ocr:
+    type: sync
+    module: agents.zebra.subagents.tools.pdf_tools
+    args: [file_path, ocr_language]
+    params:
+      returns: Dict
+  run_classification:
+    type: sync
+    module: agents.zebra.agent
+    args: [articles_dir, excel_path, criterion]
+    params:
+      returns: str
+  run_literature_review:
+    type: sync
+    module: agents.maestro.agent
+    args: [topic]
+    params:
+      returns: str
+  run_regression_classification:
+    type: sync
+    module: agents.zebra.agent
+    args: [articles_dir, excel_path]
+    params:
+      returns: str
+  save_table_to_excel:
+    type: sync
+    module: agents.maestro.subagents.tools.table_tools
+    args: [file_path]
+    params:
+      returns: Dict
+  simple_llm:
+    type: sync
+    module: agents.zebra.agent
+    args: [prompt]
+    params:
+      returns: str
+  transform_column:
+    type: sync
+    module: agents.zebra.subagents.tools.excel_tools
+    args: [file_path, column_name, transformation]
+    params:
+      returns: Dict
+  update_classification_by_title:
+    type: sync
+    module: agents.zebra.subagents.tools.excel_tools
+    args: [file_path, classifications, column_name, title_column, add_missing_rows]
+    params:
+      returns: dict
+  update_excel_row:
+    type: sync
+    module: agents.zebra.subagents.tools.excel_tools
+    args: [file_path, row_index, column_name, value]
+    params:
+      returns: Dict
+  update_result_cell:
+    type: sync
+    module: agents.maestro.subagents.tools.table_tools
+    args: [article_title, question_key, value]
+    params:
+      returns: Dict
+
+variables:
+  GOOGLE_API_KEY:
+    type: env
+    params:
+      caller: [os.getenv]
+      path: [list_models]
+
+files:
+  analysis_path:
+    type: variable
+    actions: [read]
+    params:
+      caller: [os.path.exists]
+  file_path:
+    type: variable
+    actions: [read]
+    params:
+      caller: [fitz.open, os.path.basename, os.path.exists, wb.save, os.path.dirname]
+  full_path:
+    type: variable
+    actions: [read]
+    params:
+      caller: [os.path.abspath]
+  reference_path:
+    type: variable
+    actions: [read]
+    params:
+      caller: [os.path.exists]
+  test/Articles:
+    type: variable
+    actions: [read]
+    params:
+      caller: [os.path.exists]
+  test/table_1.xlsx:
+    type: variable
+    actions: [read]
+    params:
+      caller: [os.path.exists]
